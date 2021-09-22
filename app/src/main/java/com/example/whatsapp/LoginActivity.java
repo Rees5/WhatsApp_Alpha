@@ -1,140 +1,194 @@
 package com.example.whatsapp;
 
-
-import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+
 import android.content.Intent;
+import android.content.res.ColorStateList;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.View;
-import android.widget.Button;
-import android.widget.EditText;
+import android.view.inputmethod.EditorInfo;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.google.android.gms.tasks.OnCompleteListener;
-import com.google.android.gms.tasks.Task;
-import com.google.firebase.auth.AuthResult;
-import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.auth.FirebaseUser;
-import com.google.firebase.database.DatabaseReference;
-import com.google.firebase.database.FirebaseDatabase;
-import com.google.firebase.iid.FirebaseInstanceId;
+import com.cometchat.pro.core.CometChat;
+import com.cometchat.pro.exceptions.CometChatException;
+import com.cometchat.pro.models.User;
+import com.cometchat.pro.uikit.ui_components.cometchat_ui.CometChatUI;
+import com.cometchat.pro.uikit.ui_resources.utils.Utils;
+import com.cometchat.pro.whatsapp.R;
+import com.google.android.material.textfield.TextInputEditText;
+import com.google.android.material.textfield.TextInputLayout;
 
+import com.example.whatsapp.constants.AppConfig;
+
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.util.HashMap;
 
 public class LoginActivity extends AppCompatActivity {
 
-    private FirebaseAuth mAuth;
-    private Button LoginButton, PhoneLoginButton;
-    private EditText UserEmail, UserPassword;
-    private TextView NeedNewAccountLink, ForgetPasswordLink;
-    private DatabaseReference UsersRef;
-
-
+    private TextInputLayout inputLayout,pwLayout;
+    private ProgressBar progressBar;
+    private TextInputEditText uid,pw;
+    private TextView title;
+    private TextView des1,des2;
     @Override
-    protected void onCreate(Bundle savedInstanceState)
-    {
+    protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_login);
-
-        mAuth = FirebaseAuth.getInstance();
-        UsersRef = FirebaseDatabase.getInstance().getReference().child("Users");
-
-        InitializeFields();
-
-        NeedNewAccountLink.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                SendUserToRegisterActivity();
-            }
+        title = findViewById(R.id.tvTitle);
+        des1 = findViewById(R.id.tvDes1);
+        des2 = findViewById(R.id.tvDes2);
+        uid = findViewById(R.id.etUID);
+        pw= findViewById(R.id.etpw);
+        progressBar = findViewById(R.id.loginProgress);
+        inputLayout = findViewById(R.id.inputUID);
+        pwLayout = findViewById(R.id.inputpw);
+        uid.setOnEditorActionListener((textView, i, keyEvent) -> {
+             if (i== EditorInfo.IME_ACTION_DONE){
+                 if (uid.getText().toString().isEmpty()) {
+                     Toast.makeText(LoginActivity.this, "Fill Username field", Toast.LENGTH_LONG).show();
+                 }
+                 else {
+                     progressBar.setVisibility(View.VISIBLE);
+                     inputLayout.setEndIconVisible(false);
+                     login(uid.getText().toString());
+                 }
+             }
+            return true;
         });
 
-        LoginButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-
-                AllowUserToLogin();
-
+        pwLayout.setEndIconOnClickListener(view -> {
+            if (uid.getText().toString().isEmpty()) {
+                Toast.makeText(LoginActivity.this, "Fill Username field", Toast.LENGTH_LONG).show();
             }
-        });
-
-        PhoneLoginButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view)
-            {
-                Intent phoneLoginIntent = new Intent(LoginActivity.this, PhoneLoginActivity.class);
-                startActivity(phoneLoginIntent);
+            else {
+                findViewById(R.id.loginProgress).setVisibility(View.VISIBLE);
+                inputLayout.setEndIconVisible(false);
+                userLogin(uid.getText().toString(),pw.getText().toString());
             }
+
         });
+       // checkDarkMode();
     }
 
+    private void userLogin(String uid, String pwd) {
 
-    protected void onStart() {
-        super.onStart();
-        FirebaseUser currentUser = mAuth.getCurrentUser();
-        if (currentUser != null) {
-            SendUserToMainActivity();
-        }
-    }
+        //if everything is fine
 
-    private void AllowUserToLogin() {
-        String email = UserEmail.getText().toString();
-        String password = UserPassword.getText().toString();
-        if(TextUtils.isEmpty(email))
-        {
-            Toast.makeText(this,"Please enter email",Toast.LENGTH_SHORT).show();
-        }
-        if(TextUtils.isEmpty(password))
-        {
-            Toast.makeText(this,"Please enter password",Toast.LENGTH_SHORT).show();
-        }
-        else
-        {
+        class UserLogin extends AsyncTask<Void, Void, String> {
 
-            mAuth.signInWithEmailAndPassword(email,password).addOnCompleteListener(new OnCompleteListener<AuthResult>() {
-                @Override
-                public void onComplete(@NonNull Task<AuthResult> task) {
-                    if(task.isSuccessful())
-                    {
-                        String currentUserId = mAuth.getCurrentUser().getUid();
-                        String deviceToken = FirebaseInstanceId.getInstance().getInstanceId().toString();
-                        UsersRef.child(currentUserId).child("device_Token").setValue(deviceToken).addOnCompleteListener(new OnCompleteListener<Void>() {
-                            @Override
-                            public void onComplete(@NonNull Task<Void> task) {
-                                if(task.isSuccessful()) {
-                                    SendUserToMainActivity();
-                                    Toast.makeText(LoginActivity.this, "Logged in Successful...", Toast.LENGTH_SHORT).show();
-                                }
-                            }
-                        });
+
+            @Override
+            protected void onPreExecute() {
+                super.onPreExecute();
+            }
+
+            @Override
+            protected void onPostExecute(String s) {
+                super.onPostExecute(s);
+                progressBar.setVisibility(View.GONE);
+
+
+                try {
+                    //converting response to json object
+                    JSONObject obj = new JSONObject(s);
+
+                    //if no error in response
+                    if (!obj.getBoolean("error")) {
+                        Toast.makeText(getApplicationContext(), obj.getString("message"), Toast.LENGTH_SHORT).show();
+
+                        //getting the user from the response
+                        JSONObject userJson = obj.getJSONObject("user");
+
+                        //creating a new user object
+                        Users user = new Users(
+                                userJson.getInt("id"),
+                                userJson.getString("username"),
+                                userJson.getString("email"),
+                                userJson.getString("gender")
+                        );
+
+                        //storing the user in shared preferences
+                        SharedPrefManager.getInstance(getApplicationContext()).userLogin(user);
+
+                        //starting the profile activity
+                        login(uid);
+                       // finish();
+                    } else {
+                        Toast.makeText(getApplicationContext(), "Invalid username or password", Toast.LENGTH_SHORT).show();
                     }
-                    else {
-                        String message = task.getException().toString();
-                        Toast.makeText(LoginActivity.this, "Error : " + message, Toast.LENGTH_SHORT).show();
-                    }
+                } catch (JSONException e) {
+                    e.printStackTrace();
                 }
-            });
+            }
+
+            @Override
+            protected String doInBackground(Void... voids) {
+                //creating request handler object
+                RequestHandler requestHandler = new RequestHandler();
+
+                //creating request parameters
+                HashMap<String, String> params = new HashMap<>();
+                params.put("username", uid);
+                params.put("password", pwd);
+
+                //returing the response
+                return requestHandler.sendPostRequest(URLs.URL_LOGIN, params);
+            }
+        }
+
+        UserLogin ul = new UserLogin();
+        ul.execute();
+    }
+
+    private void checkDarkMode() {
+        if(Utils.isDarkMode(this)) {
+            title.setTextColor(getResources().getColor(R.color.textColorWhite));
+            des1.setTextColor(getResources().getColor(R.color.textColorWhite));
+            des2.setTextColor(getResources().getColor(R.color.textColorWhite));
+            uid.setTextColor(getResources().getColor(R.color.textColorWhite));
+            inputLayout.setBoxStrokeColor(getResources().getColor(R.color.textColorWhite));
+            inputLayout.setHintTextColor(ColorStateList.valueOf(getResources().getColor(R.color.textColorWhite)));
+            inputLayout.setDefaultHintTextColor(ColorStateList.valueOf(getResources().getColor(R.color.textColorWhite)));
+            uid.setHintTextColor(getResources().getColor(R.color.textColorWhite));
+            progressBar.setIndeterminateTintList(ColorStateList.valueOf(getResources().getColor(R.color.textColorWhite)));
+        } else {
+            title.setTextColor(getResources().getColor(R.color.primaryTextColor));
+            des1.setTextColor(getResources().getColor(R.color.primaryTextColor));
+            des2.setTextColor(getResources().getColor(R.color.primaryTextColor));
+            uid.setTextColor(getResources().getColor(R.color.primaryTextColor));
+            inputLayout.setBoxStrokeColor(getResources().getColor(R.color.primaryTextColor));
+            uid.setHint("");
+            inputLayout.setHintTextColor(ColorStateList.valueOf(getResources().getColor(R.color.secondaryTextColor)));
+            progressBar.setIndeterminateTintList(ColorStateList.valueOf(getResources().getColor(R.color.primaryTextColor)));
         }
     }
-
-    private void InitializeFields() {
-        LoginButton = (Button) findViewById(R.id.login_button);
-        PhoneLoginButton = (Button) findViewById(R.id.phone_login_button);
-        UserEmail = (EditText) findViewById(R.id.login_email);
-        UserPassword = (EditText) findViewById(R.id.login_password);
-        NeedNewAccountLink = (TextView) findViewById(R.id.need_new_account_link);
-        ForgetPasswordLink = (TextView) findViewById(R.id.forget_password_link);
-    }
+    private void login(String uid) {
 
 
-    private void SendUserToMainActivity() {
-        Intent mainIntent = new Intent(LoginActivity.this,MainActivity.class);
-       mainIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-        startActivity(mainIntent);
-        finish();
+        CometChat.login(uid, AppConfig.AppDetails.AUTH_KEY, new CometChat.CallbackListener<User>() {
+            @Override
+            public void onSuccess(User user) {
+                startActivity(new Intent(LoginActivity.this, CometChatUI.class));
+                finish();
+            }
+
+            @Override
+            public void onError(CometChatException e) {
+                inputLayout.setEndIconVisible(true);
+                findViewById(R.id.loginProgress).setVisibility(View.GONE);
+                Toast.makeText(LoginActivity.this, e.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        });
     }
-    private void SendUserToRegisterActivity() {
-        Intent registerIntent = new Intent(LoginActivity.this,RegisterActivity.class);
-        startActivity(registerIntent);
+
+    public void createUser(View view) {
+        startActivity(new Intent(LoginActivity.this,CreateUserActivity.class));
     }
+
 }
